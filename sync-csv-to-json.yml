@@ -1,0 +1,52 @@
+name: Tự động lấy dữ liệu từ CSV Google Sheet
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Chạy mỗi 6 giờ
+  workflow_dispatch:  # Có thể chạy tay từ tab Actions
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Tải CSV từ Google Sheet
+        run: |
+          curl -L "https://docs.google.com/spreadsheets/d/e/2PACX-1vSsbQJFVC7haXuNmR5nIb4ocNYvzlS1JQ54wnu3h_u6aav-I0Zrk1Q9VKgiLj1SnZMG8JFVigoXCr9O/pub?gid=2141780920&single=true&output=csv" -o data.csv
+
+      - name: Chuyển CSV thành JSON
+        run: |
+          python - <<EOF
+          import csv
+          import json
+
+          data = []
+          with open('data.csv', encoding='utf-8') as f:
+              reader = csv.reader(f)
+              next(reader)  # Bỏ dòng header nếu cần
+              for row in reader:
+                  if len(row) >= 8 and row[1].strip():  # Cột 2 (index 1) là title
+                      item = {
+                          "title": row[1].strip(),
+                          "image": row[3].strip() if len(row) > 3 else "",
+                          "link": row[4].strip() if len(row) > 4 else "",
+                          "desc": row[6].strip() if len(row) > 6 else "",
+                          "date": row[7].strip() if len(row) > 7 else ""
+                      }
+                      data.append(item)
+
+          with open('data.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+
+          print("Chuyển CSV thành JSON xong!")
+          EOF
+
+      - name: Commit và push thay đổi
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add data.json
+          git commit -m "Tự động cập nhật từ Google Sheet CSV" || echo "Không có thay đổi"
+          git push
